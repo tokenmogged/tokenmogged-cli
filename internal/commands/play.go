@@ -13,6 +13,7 @@ import (
 	"github.com/tokenmogged/tokenmogged-cli/internal/api"
 	"github.com/tokenmogged/tokenmogged-cli/internal/config"
 	"github.com/tokenmogged/tokenmogged-cli/internal/state"
+	"github.com/tokenmogged/tokenmogged-cli/internal/submit"
 )
 
 func Play(ctx context.Context) error {
@@ -130,13 +131,26 @@ func launchClaude(ctx context.Context, active *state.ActiveMatch) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil && !errors.Is(err, context.Canceled) {
+	// Signal to the hook subprocess that this play process will handle
+	// submission after claude exits — so the hook should NOT try to upload
+	// (which would race with us and might get killed mid-flight when claude
+	// shuts down).
+	cmd.Env = append(os.Environ(), "TOKENMOGGED_PLAY=1")
+
+	runErr := cmd.Run()
+	if runErr != nil {
 		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return nil
+		if !errors.As(runErr, &exitErr) && !errors.Is(runErr, context.Canceled) {
+			return fmt.Errorf("claude exited: %w", runErr)
 		}
-		return fmt.Errorf("claude exited: %w", err)
 	}
+
+	fmt.Fprintln(os.Stderr, "[tokenmogged] uploading submission...")
+	if err := submit.Trigger(active, active.ScratchDir, "manual_submit"); err != nil {
+		fmt.Fprintf(os.Stderr, "[tokenmogged] submission failed: %v\n", err)
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "[tokenmogged] submission uploaded.")
 	return nil
 }
 

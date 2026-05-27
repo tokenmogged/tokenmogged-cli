@@ -14,6 +14,7 @@ import (
 	"github.com/tokenmogged/tokenmogged-cli/internal/api"
 	"github.com/tokenmogged/tokenmogged-cli/internal/config"
 	"github.com/tokenmogged/tokenmogged-cli/internal/state"
+	"github.com/tokenmogged/tokenmogged-cli/internal/submit"
 )
 
 const StateFile = "active_match.json"
@@ -109,8 +110,21 @@ func Run(eventType string) error {
 	}
 
 	if (eventType == "session_end" || isCompaction(payload, eventType)) && (active.State == "active" || active.State == "lobby") {
+		// When claude is spawned by `tokenmogged play`, the parent process
+		// triggers submission after claude exits — it's a stable, long-lived
+		// process and won't be killed mid-upload. The hook subprocess is
+		// lifecycle-bound to claude and can get SIGKILL'd before a multi-step
+		// upload completes. Skip here; let the parent handle it.
+		if os.Getenv("TOKENMOGGED_PLAY") == "1" {
+			return nil
+		}
 		fmt.Fprintln(os.Stderr, "[tokenmogged] uploading submission...")
-		if err := triggerSubmission(active, payload); err != nil {
+		cwd, _ := os.Getwd()
+		reason := "manual_submit"
+		if v, ok := payload["reason"].(string); ok && v != "" {
+			reason = v
+		}
+		if err := submit.Trigger(active, cwd, reason); err != nil {
 			fmt.Fprintf(os.Stderr, "[tokenmogged] submission failed: %v\n", err)
 		} else {
 			fmt.Fprintln(os.Stderr, "[tokenmogged] submission uploaded.")
