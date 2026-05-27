@@ -10,7 +10,7 @@ import (
 	"github.com/tokenmogged/tokenmogged-cli/internal/commands"
 )
 
-const version = "0.1.0"
+var version = "dev"
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
