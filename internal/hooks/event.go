@@ -109,11 +109,12 @@ func Run(eventType string) error {
 	}
 
 	if (eventType == "session_end" || isCompaction(payload, eventType)) && (active.State == "active" || active.State == "lobby") {
-		go func() {
-			if err := triggerSubmission(active, payload); err != nil {
-				fmt.Fprintf(os.Stderr, "[tokenmogged] submission failed: %v\n", err)
-			}
-		}()
+		fmt.Fprintln(os.Stderr, "[tokenmogged] uploading submission...")
+		if err := triggerSubmission(active, payload); err != nil {
+			fmt.Fprintf(os.Stderr, "[tokenmogged] submission failed: %v\n", err)
+		} else {
+			fmt.Fprintln(os.Stderr, "[tokenmogged] submission uploaded.")
+		}
 	}
 	return nil
 }
