@@ -34,6 +34,8 @@ func main() {
 		err = commands.Setup()
 	case "uninstall-hooks":
 		err = commands.UninstallHooks()
+	case "uninstall":
+		err = commands.Uninstall(args)
 	case "play":
 		err = commands.Play(ctx)
 	case "status":

@@ -14,6 +14,7 @@ Commands:
   whoami          Print the currently bound account.
   setup           Install Claude Code hooks into ~/.claude/settings.json.
   uninstall-hooks Remove tokenmogged entries from your Claude Code settings.
+  uninstall [-y]  Remove hooks, credentials, scratch dirs, and the CLI binary.
   play            Open the tokenmogged lobby in your browser.
   status          Print active match info (if any).
   submit          Force-submit the current working directory now.
