@@ -51,6 +51,10 @@ func Run(eventType string) error {
 		return nil
 	}
 
+	if !cwdInScratch(payload, active.ScratchDir) {
+		return nil
+	}
+
 	creds, err := config.Load()
 	if err != nil {
 		return nil
@@ -169,6 +173,30 @@ func emitBlockedHint(msg string) {
 
 func newEventID() string {
 	return fmt.Sprintf("ev_%d_%d", time.Now().UnixNano(), os.Getpid())
+}
+
+// cwdInScratch returns true if the hook's cwd belongs to the active match's scratch dir.
+// When the active match has no scratch dir (e.g., legacy state file pre-v0.1.1), it
+// falls back to allowing the event — preserves backward compatibility.
+func cwdInScratch(payload map[string]any, scratch string) bool {
+	if scratch == "" {
+		return true
+	}
+	cwd, _ := payload["cwd"].(string)
+	if cwd == "" {
+		return false
+	}
+	cwdAbs, err := filepath.Abs(cwd)
+	if err != nil {
+		return false
+	}
+	scratchAbs, err := filepath.Abs(scratch)
+	if err != nil {
+		return false
+	}
+	cwdAbs = filepath.Clean(cwdAbs) + string(filepath.Separator)
+	scratchAbs = filepath.Clean(scratchAbs) + string(filepath.Separator)
+	return strings.HasPrefix(cwdAbs, scratchAbs)
 }
 
 func mustClient(c *api.Client) *api.Client {

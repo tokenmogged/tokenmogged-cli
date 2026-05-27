@@ -19,6 +19,7 @@ type ActiveMatch struct {
 	TopicID    string    `json:"topic_id"`
 	StartedAt  time.Time `json:"started_at"`
 	RefreshedAt time.Time `json:"refreshed_at"`
+	ScratchDir string    `json:"scratch_dir,omitempty"`
 }
 
 func path() (string, error) {
