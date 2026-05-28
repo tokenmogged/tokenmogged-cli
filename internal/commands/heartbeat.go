@@ -7,6 +7,7 @@ import (
 
 	"github.com/tokenmogged/tokenmogged-cli/internal/api"
 	"github.com/tokenmogged/tokenmogged-cli/internal/state"
+	"github.com/tokenmogged/tokenmogged-cli/internal/transcript"
 )
 
 const heartbeatInterval = 60 * time.Second
@@ -43,6 +44,23 @@ func runHeartbeat(ctx context.Context, active *state.ActiveMatch) {
 				EventType:   "heartbeat",
 				ClientTs:    time.Now().UTC().Format(time.RFC3339Nano),
 				Payload:     map[string]any{},
+			}
+			// Attach absolute cumulative tokens read from the latest Claude
+			// .jsonl transcript in the scratch dir. Hooks fire on user
+			// actions; this catches the silent moments (long generations,
+			// reading time) so the live UI counter still ticks up.
+			if path, err := transcript.FindLatest(active.ScratchDir); err == nil && path != "" {
+				if s, err := transcript.ReadFile(path); err == nil && (s.TotalInput+s.TotalOutput) > 0 {
+					body.Tokens = &api.TokenCounts{
+						Input:         s.TotalInput,
+						Output:        s.TotalOutput,
+						CacheRead:     s.TotalCacheRead,
+						CacheCreation: s.TotalCacheCreate,
+					}
+					if s.LatestModel != "" {
+						body.ModelID = s.LatestModel
+					}
+				}
 			}
 			reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			var resp api.StreamResponse

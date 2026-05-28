@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/tokenmogged/tokenmogged-cli/internal/api"
 	"github.com/tokenmogged/tokenmogged-cli/internal/state"
+	"github.com/tokenmogged/tokenmogged-cli/internal/transcript"
 )
 
 const (
@@ -210,96 +210,28 @@ func readTranscript(active *state.ActiveMatch) (string, TranscriptSummary, error
 	if active == nil {
 		return "", summary, nil
 	}
-	home, _ := os.UserHomeDir()
-	projectsDir := filepath.Join(home, ".claude", "projects")
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", summary, err
 	}
-	encoded := encodeProjectPath(cwd)
-	dir := filepath.Join(projectsDir, encoded)
-
-	var latest string
-	var latestMod time.Time
-	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(p, ".jsonl") {
-			return nil
-		}
-		info, ierr := d.Info()
-		if ierr != nil {
-			return nil
-		}
-		if info.ModTime().After(latestMod) {
-			latest = p
-			latestMod = info.ModTime()
-		}
-		return nil
-	})
+	latest, err := transcript.FindLatest(cwd)
+	if err != nil || latest == "" {
+		return "", summary, err
+	}
+	s, err := transcript.ReadFile(latest)
 	if err != nil {
 		return "", summary, err
 	}
-	if latest == "" {
-		return "", summary, nil
-	}
-
-	data, err := os.ReadFile(latest)
-	if err != nil {
-		return "", summary, err
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if line == "" {
-			continue
-		}
-		var rec map[string]any
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			continue
-		}
-		summary.EventCount++
-		if msg, ok := rec["message"].(map[string]any); ok {
-			if usage, ok := msg["usage"].(map[string]any); ok {
-				summary.TotalInput += toInt(usage["input_tokens"])
-				summary.TotalOutput += toInt(usage["output_tokens"])
-				summary.TotalCacheRead += toInt(usage["cache_read_input_tokens"])
-				summary.TotalCacheCreate += toInt(usage["cache_creation_input_tokens"])
-			}
-			if model, ok := msg["model"].(string); ok && model != "" {
-				summary.ModelsUsed[model] += toInt(msg["usage"].(map[string]any)["input_tokens"]) + toInt(msg["usage"].(map[string]any)["output_tokens"])
-			}
-		}
-		if v, ok := rec["isCompactSummary"].(bool); ok && v {
-			summary.HasCompactionLine = true
-		}
-	}
-	return latest, summary, nil
-}
-
-func encodeProjectPath(cwd string) string {
-	r := strings.NewReplacer(string(os.PathSeparator), "-", " ", "-")
-	out := r.Replace(cwd)
-	if strings.HasPrefix(out, "-") {
-		return out
-	}
-	return "-" + out
-}
-
-func toInt(v any) int {
-	switch x := v.(type) {
-	case float64:
-		return int(x)
-	case int:
-		return x
-	case int64:
-		return int(x)
-	default:
-		return 0
-	}
+	return latest, TranscriptSummary{
+		SessionUUID:       s.SessionUUID,
+		TotalInput:        s.TotalInput,
+		TotalOutput:       s.TotalOutput,
+		TotalCacheRead:    s.TotalCacheRead,
+		TotalCacheCreate:  s.TotalCacheCreate,
+		ModelsUsed:        s.ModelsUsed,
+		EventCount:        s.EventCount,
+		HasCompactionLine: s.HasCompactionLine,
+	}, nil
 }
 
 func SortedKeys(m map[string]int) []string {

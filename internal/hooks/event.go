@@ -15,6 +15,7 @@ import (
 	"github.com/tokenmogged/tokenmogged-cli/internal/config"
 	"github.com/tokenmogged/tokenmogged-cli/internal/state"
 	"github.com/tokenmogged/tokenmogged-cli/internal/submit"
+	"github.com/tokenmogged/tokenmogged-cli/internal/transcript"
 )
 
 const StateFile = "active_match.json"
@@ -79,6 +80,24 @@ func Run(eventType string) error {
 		modelID = v
 	} else if v, ok := payload["model_id"].(string); ok {
 		modelID = v
+	}
+
+	// Override tokens with the absolute cumulative read from Claude Code's
+	// .jsonl transcript. Hook payloads don't carry usage today (Anthropic
+	// issues #52089/#41689/#11008), so transcript is the only live source.
+	// The server treats the tokens field as absolute, not delta.
+	if tp, ok := payload["transcript_path"].(string); ok && tp != "" {
+		if s, err := transcript.ReadFile(tp); err == nil && (s.TotalInput+s.TotalOutput) > 0 {
+			tokens = &api.TokenCounts{
+				Input:         s.TotalInput,
+				Output:        s.TotalOutput,
+				CacheRead:     s.TotalCacheRead,
+				CacheCreation: s.TotalCacheCreate,
+			}
+			if modelID == "" && s.LatestModel != "" {
+				modelID = s.LatestModel
+			}
+		}
 	}
 
 	body := api.StreamEvent{
