@@ -137,7 +137,15 @@ func launchClaude(ctx context.Context, active *state.ActiveMatch) error {
 	// shuts down).
 	cmd.Env = append(os.Environ(), "TOKENMOGGED_PLAY=1")
 
+	// Keep matchLastEvent fresh while claude is alive — hooks don't fire
+	// during long generations or reading time, so without this the
+	// disconnect watcher would void the match.
+	hbCtx, cancelHB := context.WithCancel(ctx)
+	defer cancelHB()
+	go runHeartbeat(hbCtx, active)
+
 	runErr := cmd.Run()
+	cancelHB()
 	if runErr != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(runErr, &exitErr) && !errors.Is(runErr, context.Canceled) {
